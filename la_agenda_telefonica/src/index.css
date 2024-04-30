@@ -1,0 +1,9 @@
+
+.add{
+    background-color: green;
+}
+
+
+.message.error {
+    background-color: #f44336; /* Color de fondo rojo para mensajes de error */
+  }

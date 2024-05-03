@@ -1,8 +1,13 @@
 
+require('dotenv').config()
+require('./mongo')
 const express = require('express')
 
 const cors = require('cors');
 const morgan= require('morgan')
+
+const Person = require('./models/person')
+const handleErrors = require('./Middleware/handleErrors')
 
 const app = express()
 app.use(cors());
@@ -49,92 +54,115 @@ const  getCurrentTimeGMT = () => {
 
 
 app.get('/api/persons', (request, response) => {
-    response.json(persons)
+     
+    Person.find({}).then(pers => {
+      response.json(pers)
+    })
   })
 
 
 app.get('/info', (request, response) => {
-  
-  const horaActualGMT = getCurrentTimeGMT();
+  // Obtener la hora actual en GMT
+  const horaActualGMT = getCurrentTimeGMT()
 
-  const numEntradas = persons.length;
-
-  const respuestaHTML = `
-    <h1>Captura de pantalla de 3.2</h1>
+   Person.countDocuments()
+   .then(numEntradas =>{
+    // Crear la respuesta HTML
+    const respuestaHTML = `
     <p>Phonebook has info for ${numEntradas} people</p>
     <br/>
     <p>Hora de la solicitud en GMT: ${horaActualGMT}</p>
    
   `;
+  // Enviar la respuesta
   response.send(respuestaHTML);
+
+   })
+   .catch(error => {
+    console.error('Error al obtener información:', error);
+    response.status(500).send('Error interno del servidor');
+  });
+  
 })
 
 
 app.get('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const person = persons.find(person => person.id === id)
-  
-  if (person) {
-    response.json(person)
-  } else {
-    response.status(404).end()
-  }
+  const id = request.params.id
+
+  Person.findById(request.params.id).then(result => {
+    response.json(result)
+  })
+ 
 })
 
-/*
-app.delete('/api/persons/:id', (request, response,) => {
-  const { id } = Number(request.params);
-
-  persons.findByIdAndDelete(id)
-    .then(result => {
-      if (result) {
-        response.status(204).end(); // Envía la respuesta después de eliminar con éxito
-      } else {
-        response.status(404).json({ error: "Person not found" }); // Si no se encuentra la persona
-      }
-    })
-    .catch(error => (error));
-});
-*/
-
-app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-    persons.filter(person => person.id !== id)
-
-  response.status(204).end()
-})
-
-
-app.post('/api/persons', (request, response) => {
-  const maxId = persons.length > 0
-    ? Math.max(...persons.map(n => n.id)) 
-    : 0
+app.put('/api/persons/:id', (request,response, next) => {
+  const {id} = request.params
 
   const person = request.body
-  person.id = maxId + 1
 
-  // Verificar si falta el nombre o el número
-  if (!person.name) {
-    return response.status(400).json({ 
-      error: 'name  are required' 
-    })
+  const newPersonInfo = {
+          name: person.name,
+          number: person.number
   }
+  console.log("optiene el id")
+  //actualizar resultado utilizando la id  
+  Person.findByIdAndUpdate(id, newPersonInfo, { new: true })
+          .then(result => {
+                  response.json(result)
+                  console.log(result)
+          })
 
-  //Verificar si el nombre ya existe en la agenda
-  if (persons.some(existingPerson => existingPerson.name === person.name)) {
-    return response.status(400).json({ 
-      error: 'name must be unique' 
+          console.log('actualisando el user')
+})
+
+ 
+app.delete('/api/persons/:id', (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(result => {
+      response.status(204).end()
     })
-  }
+    .catch(error => next(error))
 
-  persons.concat(person)
-  response.json(person)
 
-  console.log(person)
 })
 
 
 
+app.post('/api/persons', (request,response,next) => {
+  const people = request.body
+ 
+  if(!people || !people.name){
+    return response.status(400).json({
+       error:'people is missing'
+    })
+}
+  const newPerson = new Person({
+    name:people.name,
+    number:people.number
+  })
+
+  newPerson.save().then(savedPerson => {
+    response.json(savedPerson)
+    console.log(savedPerson)
+  })
+  .catch((error) => {
+    // Si se produce un error durante la validación, captura la excepción
+    if (error.name === 'ValidationError') {
+      // El error de validación se envía con un código de estado 400 Bad Request
+      // junto con un mensaje de error que explica la razón del error
+      return response.status(400).json({ error: error.message });
+    }
+
+    // Si se produce otro tipo de error, devuelve un código de estado 500 Internal Server Error
+    // y un mensaje de error genérico
+    console.error('Error al crear una nueva persona:', error);
+    response.status(500).json({ error: 'Ha ocurrido un error al procesar la solicitud.' });
+  })
+
+}) 
+
+
+app.use(handleErrors)
 
 
 const PORT = 3001
